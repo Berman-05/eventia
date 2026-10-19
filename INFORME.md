@@ -6,7 +6,7 @@
 
 Nombre: ______________________________ Carné: ______________
 
-Repositorio: _<enlace al repositorio de Eventia>_
+Repositorio: https://github.com/Berman-05/eventia
 
 > Referencia: OWASP API Security Top 10 – 2023 (API1 a API10).
 
