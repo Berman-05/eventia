@@ -1,0 +1,47 @@
+▶ API 1 - GET /inscripciones/:id (BOLA)
+  ✔ el dueño puede ver su inscripción (4.2852ms)
+  ✔ otro usuario recibe 404 (no se revela que existe) (1.9242ms)
+  ✔ organizador de otro evento recibe 404 (3.8739ms)
+  ✔ organizador del evento sí puede verla (4.1039ms)
+  ✔ sin token responde 401 (10.4745ms)
+✔ API 1 - GET /inscripciones/:id (BOLA) (351.3641ms)
+▶ API 2 - POST /usuarios (mass assignment)
+  ✔ registro válido crea un usuario con rol "usuario" (60.7356ms)
+  ✔ enviar "rol: administrador" es rechazado con 400 (13.7172ms)
+  ✔ contraseña corta es rechazada (2.6946ms)
+  ✔ correo duplicado responde 409 (13.1176ms)
+✔ API 2 - POST /usuarios (mass assignment) (90.9764ms)
+▶ API 3 - POST /eventos (validación + BFLA)
+  ✔ organizador crea evento válido (4.7502ms)
+  ✔ cupo y precio negativos son rechazados (12.3056ms)
+  ✔ usuario normal no puede crear eventos (403) (14.7366ms)
+  ✔ no se puede forzar organizador_id (17.0872ms)
+✔ API 3 - POST /eventos (validación + BFLA) (49.2044ms)
+▶ API 4 - PUT /eventos/:id (BOLA)
+  ✔ el organizador modifica su propio evento (17.0874ms)
+  ✔ otro organizador recibe 403 (7.8371ms)
+  ✔ administrador sí puede modificarlo (5.5696ms)
+  ✔ no se puede bajar el cupo por debajo de lo ya inscrito (2.7582ms)
+✔ API 4 - PUT /eventos/:id (BOLA) (33.651ms)
+▶ API 5 - POST /eventos/:id/inscripciones (límites y concurrencia)
+  ✔ cantidad mayor al máximo por usuario es rechazada (6.5866ms)
+  ✔ no puede inscribirse dos veces al mismo evento (2.4263ms)
+  ✔ 10 inscripciones simultáneas en un evento con 3 cupos: solo 3 pasan (1399.2403ms)
+✔ API 5 - POST /eventos/:id/inscripciones (límites y concurrencia) (1408.7525ms)
+▶ API 6 - GET /usuarios/:id (exposición de datos)
+  ✔ el usuario ve solo id, nombre y correo (1.5469ms)
+  ✔ otro usuario no puede consultarlo (403) (16.217ms)
+  ✔ ni siquiera el admin recibe passwordHash (1.4208ms)
+✔ API 6 - GET /usuarios/:id (exposición de datos) (19.4787ms)
+▶ API 7 - POST /auth/login (enumeración y fuerza bruta)
+  ✔ correo inexistente y contraseña incorrecta dan el mismo mensaje (128.3515ms)
+  ✔ tras 5 intentos fallidos responde 429 (360.6003ms)
+✔ API 7 - POST /auth/login (enumeración y fuerza bruta) (489.5683ms)
+ℹ tests 25
+ℹ suites 7
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2889.0919
