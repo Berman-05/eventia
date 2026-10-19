@@ -9,7 +9,8 @@ const SCHEMA = `
     telefono      TEXT,
     password_hash TEXT NOT NULL,
     rol           TEXT NOT NULL DEFAULT 'usuario'
-                  CHECK (rol IN ('usuario', 'organizador', 'administrador'))
+                  CHECK (rol IN ('usuario', 'organizador', 'administrador')),
+    token_version INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS eventos (
@@ -20,7 +21,8 @@ const SCHEMA = `
     cupo            INTEGER NOT NULL CHECK (cupo > 0),
     disponibles     INTEGER NOT NULL CHECK (disponibles >= 0),
     precio          REAL NOT NULL CHECK (precio >= 0),
-    organizador_id  INTEGER NOT NULL REFERENCES usuarios(id)
+    organizador_id  INTEGER NOT NULL REFERENCES usuarios(id),
+    estado          TEXT NOT NULL DEFAULT 'abierto' CHECK (estado IN ('abierto', 'cerrado'))
   );
 
   CREATE TABLE IF NOT EXISTS inscripciones (
@@ -31,7 +33,25 @@ const SCHEMA = `
     creada_en   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (evento_id, usuario_id)
   );
+
+  -- Tokens cerrados con logout antes de expirar (lista de revocación por jti).
+  CREATE TABLE IF NOT EXISTS tokens_revocados (
+    jti        TEXT PRIMARY KEY,
+    expira_en  INTEGER NOT NULL
+  );
 `;
+
+// Agrega columnas nuevas a bases creadas con versiones anteriores del esquema.
+function migrar(db) {
+  const columnas = (tabla) => db.prepare(`PRAGMA table_info(${tabla})`).all().map((c) => c.name);
+  if (!columnas('usuarios').includes('token_version')) {
+    db.exec('ALTER TABLE usuarios ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columnas('eventos').includes('estado')) {
+    db.exec(`ALTER TABLE eventos ADD COLUMN estado TEXT NOT NULL DEFAULT 'abierto'
+             CHECK (estado IN ('abierto', 'cerrado'))`);
+  }
+}
 
 // Datos de prueba. Todas las cuentas usan la contraseña SEED_PASSWORD.
 const SEED_PASSWORD = 'Eventia2026!';
@@ -57,13 +77,18 @@ function seed(db) {
   insertEvento.run('Concierto universitario', 'Bandas locales', '2026-12-05T19:00:00Z', 150, 150, 75, 2); // id 1
   insertEvento.run('Taller de seguridad web', 'OWASP API Top 10', '2026-11-20T15:00:00Z', 30, 30, 0, 3);  // id 2
   insertEvento.run('Hackatón Eventia', 'Último cupo', '2026-11-28T08:00:00Z', 3, 3, 25, 2);              // id 3
+  insertEvento.run('Feria de emprendimiento', 'Inscripciones cerradas', '2026-11-10T09:00:00Z', 50, 50, 0, 2); // id 4
+  db.prepare("UPDATE eventos SET estado = 'cerrado' WHERE id = 4").run();
 }
 
 function openDb(path = 'eventia.db') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrar(db);
   seed(db);
+  // Limpieza de revocaciones cuyo token ya expiró por sí solo.
+  db.prepare('DELETE FROM tokens_revocados WHERE expira_en < ?').run(Math.floor(Date.now() / 1000));
   return db;
 }
 

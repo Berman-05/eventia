@@ -1,8 +1,9 @@
 class HttpError extends Error {
-  constructor(status, mensaje, detalles) {
+  constructor(status, mensaje, detalles, codigo) {
     super(mensaje);
     this.status = status;
     this.detalles = detalles;
+    this.codigo = codigo;
   }
 }
 
@@ -31,7 +32,13 @@ function idParam(valor) {
 function manejadorErrores(err, _req, res, _next) {
   if (err instanceof HttpError) {
     const cuerpo = { error: err.message };
+    if (err.codigo) cuerpo.codigo = err.codigo;
     if (err.detalles) cuerpo.detalles = err.detalles;
+    if (err.status === 401) {
+      // RFC 6750: indica al cliente el esquema esperado y el motivo del rechazo.
+      const motivo = err.codigo === 'token_ausente' ? '' : `, error="invalid_token"`;
+      res.set('WWW-Authenticate', `Bearer realm="eventia"${motivo}`);
+    }
     return res.status(err.status).json(cuerpo);
   }
   if (err.type === 'entity.parse.failed') {

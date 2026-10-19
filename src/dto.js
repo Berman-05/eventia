@@ -14,6 +14,7 @@ const evento = (e) => ({
   disponibles: e.disponibles,
   precio: e.precio,
   organizadorId: e.organizador_id,
+  estado: e.estado,
 });
 
 const inscripcion = (i) => ({

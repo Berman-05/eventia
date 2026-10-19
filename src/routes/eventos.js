@@ -9,6 +9,8 @@ module.exports = function rutasEventos(db) {
   const auth = autenticar(db);
 
   const listar = db.prepare('SELECT * FROM eventos ORDER BY fecha');
+  const listarDe = db.prepare('SELECT * FROM eventos WHERE organizador_id = ? ORDER BY fecha');
+  const cerrar = db.prepare("UPDATE eventos SET estado = 'cerrado' WHERE id = ?");
   const porId = db.prepare('SELECT * FROM eventos WHERE id = ?');
   const insertar = db.prepare(
     `INSERT INTO eventos (titulo, descripcion, fecha, cupo, disponibles, precio, organizador_id)
@@ -45,8 +47,20 @@ module.exports = function rutasEventos(db) {
     }
   }
 
+  // Un evento cerrado ya no admite cambios ni inscripciones (control basado en atributos).
+  function verificarAbierto(evento, mensaje) {
+    if (evento.estado !== 'abierto') throw new HttpError(409, mensaje, undefined, 'evento_cerrado');
+  }
+
   // Consulta pública.
   router.get('/', (_req, res) => res.json(listar.all().map(dto.evento)));
+
+  // Eventos del organizador autenticado: la lista se filtra por el token, no por un parámetro.
+  // Debe declararse antes de '/:id'.
+  router.get('/mios', auth, requiereRol('organizador', 'administrador'), (req, res) => {
+    res.json(listarDe.all(req.usuario.id).map(dto.evento));
+  });
+
   router.get('/:id', (req, res) => res.json(dto.evento(obtenerEvento(idParam(req.params.id)))));
 
   // API 3: solo organizadores (o admin) y con datos validados.
@@ -63,6 +77,7 @@ module.exports = function rutasEventos(db) {
   router.put('/:id', auth, requiereRol('organizador', 'administrador'), validar(schemas.modificarEvento), (req, res) => {
     const evento = obtenerEvento(idParam(req.params.id));
     verificarPropietario(evento, req.usuario);
+    verificarAbierto(evento, 'El evento está cerrado y no admite cambios');
 
     const nuevo = { ...evento, ...req.datos };
     const ocupados = evento.cupo - evento.disponibles;
@@ -75,12 +90,22 @@ module.exports = function rutasEventos(db) {
     res.json(dto.evento(porId.get(evento.id)));
   });
 
+  // Cerrar un evento propio: a partir de ahí no admite cambios ni inscripciones.
+  router.post('/:id/cerrar', auth, requiereRol('organizador', 'administrador'), (req, res) => {
+    const evento = obtenerEvento(idParam(req.params.id));
+    verificarPropietario(evento, req.usuario);
+    verificarAbierto(evento, 'El evento ya está cerrado');
+    cerrar.run(evento.id);
+    res.json(dto.evento(porId.get(evento.id)));
+  });
+
   // API 5: máximo por usuario + descuento de cupos atómico dentro de una transacción.
   router.post('/:id/inscripciones', auth, requiereRol('usuario', 'organizador'), validar(schemas.inscripcion), (req, res) => {
     const evento = obtenerEvento(idParam(req.params.id));
     if (evento.organizador_id === req.usuario.id) {
       throw new HttpError(403, 'No puede inscribirse en su propio evento');
     }
+    verificarAbierto(evento, 'El evento no admite inscripciones');
     const { cantidad } = req.datos;
 
     db.exec('BEGIN IMMEDIATE');

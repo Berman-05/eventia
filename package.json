@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test --test-reporter=spec test/seguridad.test.js"
+    "test": "node --test --test-reporter=spec test/seguridad.test.js test/autenticacion.test.js",
+    "token:vencido": "node scripts/token-vencido.js"
   },
   "keywords": [],
   "author": "",

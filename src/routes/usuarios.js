@@ -15,8 +15,12 @@ module.exports = function rutasUsuarios(db) {
      VALUES (?, ?, ?, ?, 'usuario')`
   );
   const porId = db.prepare('SELECT * FROM usuarios WHERE id = ?');
-  const actualizarRol = db.prepare('UPDATE usuarios SET rol = ? WHERE id = ?');
+  // Al cambiar el rol se invalidan las sesiones abiertas del usuario.
+  const actualizarRol = db.prepare(
+    'UPDATE usuarios SET rol = ?, token_version = token_version + 1 WHERE id = ?'
+  );
   const listar = db.prepare('SELECT * FROM usuarios ORDER BY id');
+  const inscripcionesDe = db.prepare('SELECT * FROM inscripciones WHERE usuario_id = ? ORDER BY id');
 
   // API 2: registro público. El rol NO se acepta del cliente: siempre es "usuario".
   router.post('/', validar(schemas.registroUsuario), async (req, res) => {
@@ -37,6 +41,16 @@ module.exports = function rutasUsuarios(db) {
     const usuario = porId.get(id);
     if (!usuario) throw new HttpError(404, 'Usuario no encontrado');
     res.json(esAdmin ? dto.usuarioAdmin(usuario) : dto.usuarioPublico(usuario));
+  });
+
+  // Control 2 (Act. 24): inscripciones privadas de un usuario. Solo él mismo o un administrador.
+  router.get('/:id/inscripciones', auth, (req, res) => {
+    const id = idParam(req.params.id);
+    if (req.usuario.rol !== 'administrador' && req.usuario.id !== id) {
+      throw new HttpError(403, 'Solo puede consultar sus propias inscripciones');
+    }
+    if (!porId.get(id)) throw new HttpError(404, 'Usuario no encontrado');
+    res.json(inscripcionesDe.all(id).map(dto.inscripcion));
   });
 
   // Administración de usuarios: exclusiva del administrador.

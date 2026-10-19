@@ -1,9 +1,10 @@
 openapi: 3.0.3
 info:
   title: Eventia API (versión corregida)
-  version: 2.0.0
+  version: 2.1.0
   description: |
-    Documentación de los endpoints corregidos tras la auditoría de seguridad (Actividad 23).
+    Documentación de los endpoints corregidos tras la auditoría de seguridad (Actividad 23) y del
+    mecanismo de autenticación y control de acceso (Actividad 24).
     Los permisos y validaciones coinciden con el rediseño de la Fase 2 y con la implementación en `src/`.
 servers:
   - url: http://localhost:3000/api
@@ -20,7 +21,9 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Token obtenido en POST /auth/login. Expira en 1 hora.
+      description: |
+        Token obtenido en POST /auth/login. Expira a los 15 minutos y se revoca con POST /auth/logout.
+        Los 401 incluyen `codigo` (token_ausente, token_invalido, token_expirado, token_revocado) y el header WWW-Authenticate.
 
   schemas:
     Error:
@@ -28,6 +31,9 @@ components:
       required: [error]
       properties:
         error: { type: string, example: Datos inválidos }
+        codigo:
+          type: string
+          enum: [token_ausente, token_invalido, token_expirado, token_revocado, evento_cerrado]
         detalles:
           type: array
           items:
@@ -66,7 +72,16 @@ components:
       type: object
       properties:
         token: { type: string, example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... }
-        usuario: { $ref: '#/components/schemas/UsuarioPublico' }
+        tipo: { type: string, example: Bearer }
+        expiraEn: { type: string, format: date-time }
+        usuario: { $ref: '#/components/schemas/UsuarioConRol' }
+
+    UsuarioConRol:
+      allOf:
+        - $ref: '#/components/schemas/UsuarioPublico'
+        - type: object
+          properties:
+            rol: { type: string, enum: [usuario, organizador, administrador] }
 
     EventoEntrada:
       type: object
@@ -102,6 +117,7 @@ components:
         disponibles: { type: integer, example: 148 }
         precio: { type: number, example: 75 }
         organizadorId: { type: integer, example: 2, description: Se toma del token, nunca del cuerpo }
+        estado: { type: string, enum: [abierto, cerrado], description: Un evento cerrado no admite cambios ni inscripciones }
 
     InscripcionEntrada:
       type: object
@@ -123,8 +139,13 @@ components:
       description: Datos inválidos o propiedades no permitidas.
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
     Unauthorized:
-      description: Token ausente, inválido o expirado.
-      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+      description: Token ausente, inválido, expirado o revocado.
+      headers:
+        WWW-Authenticate: { schema: { type: string, example: 'Bearer realm="eventia", error="invalid_token"' } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: La sesión ha expirado. Inicie sesión nuevamente, codigo: token_expirado }
     Forbidden:
       description: El usuario no tiene el rol o no es dueño del recurso.
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
@@ -171,6 +192,37 @@ paths:
             RateLimit: { schema: { type: string } }
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
 
+  /auth/me:
+    get:
+      tags: [Autenticación]
+      summary: Usuario autenticado (ruta protegida)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Usuario dueño del token.
+          content: { application/json: { schema: { $ref: '#/components/schemas/UsuarioConRol' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      summary: Cerrar sesión
+      description: Revoca el token actual (por su jti) hasta su expiración.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Sesión cerrada. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout-todas:
+    post:
+      tags: [Autenticación]
+      summary: Cerrar todas las sesiones del usuario
+      description: Incrementa token_version; todos los tokens emitidos antes dejan de ser válidos.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Sesiones cerradas. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /usuarios:
     post:
       tags: [Usuarios]
@@ -207,6 +259,57 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /usuarios/{id}/inscripciones:
+    get:
+      tags: [Inscripciones]
+      summary: Inscripciones de un usuario (Control 2)
+      description: Solo el propio usuario o un administrador.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Inscripciones del usuario.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Inscripcion' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /eventos/mios:
+    get:
+      tags: [Eventos]
+      summary: Eventos del organizador autenticado
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Solo los eventos cuyo organizador es el usuario del token.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Evento' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /eventos/{id}/cerrar:
+    post:
+      tags: [Eventos]
+      summary: Cerrar un evento propio
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/EventoId' }]
+      responses:
+        '200':
+          description: Evento cerrado.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Evento' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /eventos:
     get:
       tags: [Eventos]
@@ -238,7 +341,7 @@ paths:
     put:
       tags: [Eventos]
       summary: Modificar evento propio (API 4)
-      description: Rol organizador y además dueño del evento (o administrador).
+      description: Rol organizador y además dueño del evento (o administrador). El evento debe estar abierto (409 si está cerrado).
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: '#/components/parameters/EventoId' }]
       requestBody:
