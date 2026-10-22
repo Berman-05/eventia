@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Eventia</title>
+  <meta name="description" content="Descubre eventos en Quetzaltenango y asegura tu lugar." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2314b8a6'/><text x='16' y='23' font-size='20' font-family='Arial' font-weight='700' text-anchor='middle' fill='white'>E</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,14 +21,34 @@
           <small class="brand__tag">Descubre, organiza y vive eventos</small>
         </span>
       </a>
+
       <div class="topbar__right">
-        <span class="env-pill"><span class="dot dot--ok"></span>API en línea</span>
-        <div id="chip-sesion" class="session-chip" hidden>
-          <span id="chip-avatar" class="avatar avatar--sm"></span>
-          <span>
-            <strong id="chip-nombre"></strong>
-            <small id="chip-rol"></small>
-          </span>
+        <div id="acciones-visitante" class="topbar__actions">
+          <button class="btn btn--link-light" id="btn-abrir-registro">Crear cuenta</button>
+          <button class="btn btn--primary" id="btn-abrir-login">Iniciar sesión</button>
+        </div>
+
+        <div id="menu-usuario" class="user-menu" hidden>
+          <button class="session-chip" id="btn-menu" aria-haspopup="true" aria-expanded="false">
+            <span id="chip-avatar" class="avatar avatar--sm"></span>
+            <span class="session-chip__text">
+              <strong id="chip-nombre"></strong>
+              <small id="chip-rol"></small>
+            </span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="dropdown" id="dropdown" hidden>
+            <div class="dropdown__head">
+              <strong id="menu-nombre"></strong>
+              <small id="menu-correo"></small>
+            </div>
+            <button class="dropdown__item" data-tab="inscripciones">Mis inscripciones</button>
+            <button class="dropdown__item" data-tab="mis-eventos" data-requiere="organizador">Mis eventos</button>
+            <button class="dropdown__item" data-tab="admin" data-requiere="administrador">Administración</button>
+            <hr />
+            <button class="dropdown__item" id="btn-logout">Cerrar sesión</button>
+            <button class="dropdown__item dropdown__item--danger" id="btn-logout-todas">Cerrar sesión en todos los dispositivos</button>
+          </div>
         </div>
       </div>
     </div>
@@ -36,165 +57,90 @@
   <section class="hero">
     <div class="hero__inner">
       <div>
-        <p class="eyebrow">Plataforma de eventos · Quetzaltenango</p>
+        <p class="eyebrow">Eventos en Quetzaltenango</p>
         <h1>Encuentra tu próximo evento<br /><span class="grad-text">y asegura tu lugar.</span></h1>
-        <p class="hero__sub">Cada acción la autoriza el servidor: tu rol, la propiedad del recurso y el estado del evento.</p>
+        <p class="hero__sub">Conciertos, talleres, ferias y más. Reserva en segundos y lleva tus boletos siempre contigo.</p>
       </div>
       <div class="stats">
         <div class="stat"><span id="stat-abiertos" class="stat__num">–</span><span class="stat__label">Eventos abiertos</span></div>
         <div class="stat"><span id="stat-cupos" class="stat__num">–</span><span class="stat__label">Cupos disponibles</span></div>
-        <div class="stat"><span id="stat-mias" class="stat__num">–</span><span class="stat__label">Mis inscripciones</span></div>
+        <div class="stat" id="stat-mias-box" hidden><span id="stat-mias" class="stat__num">–</span><span class="stat__label">Mis inscripciones</span></div>
       </div>
     </div>
   </section>
 
-  <div class="layout">
-    <!-- Panel lateral: identidad + consola -->
-    <aside class="sidebar">
-      <section class="panel" id="panel-login">
-        <h2 class="panel__title">Iniciar sesión</h2>
-        <p class="panel__sub">Usa una cuenta de prueba o la tuya.</p>
-        <form id="form-login" class="form" autocomplete="on">
-          <label class="field">
-            <span>Correo</span>
-            <input name="correo" type="email" required placeholder="correo@eventia.test" autocomplete="username" />
-          </label>
-          <label class="field">
-            <span>Contraseña</span>
-            <input name="password" type="password" required placeholder="••••••••" autocomplete="current-password" />
-          </label>
-          <button class="btn btn--dark btn--block" type="submit">Iniciar sesión</button>
-        </form>
-        <p class="mini-title">Cuentas de prueba</p>
-        <div class="demo-users" id="demo-users"></div>
-        <p class="panel__foot">¿No tienes cuenta? <a href="#" id="link-registro">Regístrate</a></p>
-      </section>
+  <main class="main">
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-tab="eventos">Eventos</button>
+      <button class="tab" data-tab="inscripciones" data-requiere="sesion">Mis inscripciones</button>
+      <button class="tab" data-tab="mis-eventos" data-requiere="organizador">Mis eventos</button>
+      <button class="tab" data-tab="admin" data-requiere="administrador">Administración</button>
+    </nav>
 
-      <section class="panel" id="panel-perfil" hidden>
-        <div class="profile">
-          <span id="perfil-avatar" class="avatar"></span>
-          <div>
-            <h2 id="perfil-nombre" class="panel__title"></h2>
-            <p id="perfil-correo" class="panel__sub"></p>
+    <!-- EVENTOS -->
+    <section class="view is-active" id="view-eventos">
+      <div class="view__head">
+        <div>
+          <h2>Próximos eventos</h2>
+          <p class="muted">Elige un evento y reserva hasta 4 lugares.</p>
+        </div>
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="buscar" type="search" placeholder="Buscar evento…" />
+          </div>
+          <div class="segmented" id="filtro-estado">
+            <button class="is-active" data-estado="todos">Todos</button>
+            <button data-estado="abierto">Abiertos</button>
+            <button data-estado="cerrado">Cerrados</button>
           </div>
         </div>
-        <span id="perfil-rol" class="role-badge"></span>
-        <div class="token-box">
-          <div class="token-box__row">
-            <span><span class="dot dot--ok"></span> Sesión activa</span>
-            <strong id="token-restante">15:00</strong>
-          </div>
-          <div class="progress"><span id="token-barra"></span></div>
-          <small>JWT · expira <span id="token-expira"></span></small>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn--ghost" id="btn-logout">Cerrar sesión</button>
-          <button class="btn btn--ghost btn--danger" id="btn-logout-todas" title="Invalida todos tus tokens">Cerrar todas</button>
-        </div>
-      </section>
+      </div>
+      <div id="grid-eventos" class="grid"></div>
+    </section>
 
-      <section class="panel panel--console">
-        <div class="console__head">
-          <h2 class="panel__title">Respuesta del backend</h2>
-          <button class="link-btn" id="btn-limpiar-consola">Limpiar</button>
+    <!-- MIS INSCRIPCIONES -->
+    <section class="view" id="view-inscripciones">
+      <div class="view__head">
+        <div>
+          <h2>Mis inscripciones</h2>
+          <p class="muted">Tus lugares reservados.</p>
         </div>
-        <p class="panel__sub">Cada solicitud real a la API y su código HTTP.</p>
-        <ol id="consola" class="console"></ol>
-      </section>
-    </aside>
+      </div>
+      <div id="lista-inscripciones" class="ticket-list"></div>
+    </section>
 
-    <!-- Contenido principal -->
-    <main class="main">
-      <nav class="tabs" id="tabs">
-        <button class="tab is-active" data-tab="eventos">Eventos</button>
-        <button class="tab" data-tab="inscripciones" data-requiere="sesion">Mis inscripciones</button>
-        <button class="tab" data-tab="mis-eventos" data-requiere="organizador">Mis eventos</button>
-        <button class="tab" data-tab="admin" data-requiere="administrador">Administración</button>
-        <button class="tab tab--lab" data-tab="laboratorio">Laboratorio de acceso</button>
-      </nav>
-
-      <!-- EVENTOS -->
-      <section class="view is-active" id="view-eventos">
-        <div class="view__head">
-          <div>
-            <h2>Eventos disponibles</h2>
-            <p class="muted">Consulta pública: no necesitas iniciar sesión para verlos.</p>
-          </div>
-          <div class="toolbar">
-            <div class="search">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              <input id="buscar" type="search" placeholder="Buscar evento…" />
-            </div>
-            <div class="segmented" id="filtro-estado">
-              <button class="is-active" data-estado="todos">Todos</button>
-              <button data-estado="abierto">Abiertos</button>
-              <button data-estado="cerrado">Cerrados</button>
-            </div>
-          </div>
+    <!-- MIS EVENTOS -->
+    <section class="view" id="view-mis-eventos">
+      <div class="view__head">
+        <div>
+          <h2>Mis eventos</h2>
+          <p class="muted">Publica, edita y cierra tus eventos.</p>
         </div>
-        <label class="switch">
-          <input type="checkbox" id="modo-lab" />
-          <span class="switch__track"></span>
-          <span>Mostrar también las acciones que no me corresponden <small class="muted">(para comprobar que el backend las rechaza)</small></span>
-        </label>
-        <div id="grid-eventos" class="grid"></div>
-      </section>
+        <button class="btn btn--primary" id="btn-nuevo-evento">+ Crear evento</button>
+      </div>
+      <div id="grid-mis-eventos" class="grid"></div>
+    </section>
 
-      <!-- MIS INSCRIPCIONES -->
-      <section class="view" id="view-inscripciones">
-        <div class="view__head">
-          <div>
-            <h2>Mis inscripciones</h2>
-            <p class="muted"><code>GET /api/usuarios/{tu id}/inscripciones</code> — el servidor solo devuelve las tuyas.</p>
-          </div>
+    <!-- ADMIN -->
+    <section class="view" id="view-admin">
+      <div class="view__head">
+        <div>
+          <h2>Administración de usuarios</h2>
+          <p class="muted">Al cambiar el rol de una persona, sus sesiones abiertas se cierran.</p>
         </div>
-        <div id="lista-inscripciones" class="ticket-list"></div>
-      </section>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Usuario</th><th>Correo</th><th>Rol</th><th></th></tr></thead>
+          <tbody id="tabla-usuarios"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 
-      <!-- MIS EVENTOS -->
-      <section class="view" id="view-mis-eventos">
-        <div class="view__head">
-          <div>
-            <h2>Mis eventos</h2>
-            <p class="muted"><code>GET /api/eventos/mios</code> — filtrado por el usuario del token.</p>
-          </div>
-          <button class="btn btn--primary" id="btn-nuevo-evento">+ Crear evento</button>
-        </div>
-        <div id="grid-mis-eventos" class="grid"></div>
-      </section>
+  <footer class="footer">© 2026 Eventia · Quetzaltenango, Guatemala</footer>
 
-      <!-- ADMIN -->
-      <section class="view" id="view-admin">
-        <div class="view__head">
-          <div>
-            <h2>Administración de usuarios</h2>
-            <p class="muted">Cambiar el rol de un usuario invalida sus sesiones abiertas.</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Usuario</th><th>Correo</th><th>Rol</th><th></th></tr></thead>
-            <tbody id="tabla-usuarios"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- LABORATORIO -->
-      <section class="view" id="view-laboratorio">
-        <div class="view__head">
-          <div>
-            <h2>Laboratorio de acceso</h2>
-            <p class="muted">Las pruebas de la Actividad 24. Cada una hace una solicitud real y muestra el resultado.</p>
-          </div>
-        </div>
-        <div id="lab-grid" class="lab-grid"></div>
-      </section>
-    </main>
-  </div>
-
-  <footer class="footer">Eventia · Programación Web · URL Quetzaltenango — La interfaz oculta opciones por comodidad; la seguridad la aplica la API.</footer>
-
-  <!-- Modal genérico -->
   <dialog id="modal" class="modal">
     <form method="dialog" class="modal__close-form"><button class="modal__close" aria-label="Cerrar">×</button></form>
     <div id="modal-body"></div>

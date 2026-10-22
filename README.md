@@ -28,16 +28,15 @@ Variables de entorno: `PORT`, `DB_PATH`, `JWT_SECRET` (obligatorio cambiarlo fue
 
 ## Frontend
 
-`public/` contiene una interfaz web sin dependencias (HTML, CSS y JavaScript) que el mismo servidor publica en `/`:
+`public/` contiene la interfaz web (HTML, CSS y JavaScript, sin dependencias) que el mismo servidor publica en `/`:
 
-- **Eventos:** tarjetas con fecha, precio, cupos y estado; inscripción con selector de cantidad.
+- **Eventos:** tarjetas con fecha, precio, cupos y estado; búsqueda, filtros y reserva de 1 a 4 lugares.
+- **Iniciar sesión / Crear cuenta:** ventanas modales desde la cabecera.
 - **Mis inscripciones:** boletos del usuario autenticado.
 - **Mis eventos** (organizador): crear, editar, cerrar y ver participantes.
 - **Administración** (administrador): cambiar roles.
-- **Laboratorio de acceso:** las pruebas de la Actividad 24 con un clic y su resultado.
-- **Respuesta del backend:** registro de cada solicitud con su código HTTP.
 
-El interruptor *“Mostrar también las acciones que no me corresponden”* hace visibles los botones que la interfaz normalmente oculta, para demostrar que la API los rechaza aunque el frontend los muestre. El token se guarda solo en memoria: al recargar la página hay que iniciar sesión de nuevo.
+La interfaz muestra a cada persona solo las acciones de su rol, pero las reglas de acceso las aplica la API. El token se guarda solo en memoria: al recargar la página hay que iniciar sesión de nuevo. Las pruebas de acceso de la Actividad 24 están en `docs/eventia-act24.postman_collection.json`.
 
 ## Autenticación
 
