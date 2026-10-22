@@ -7,7 +7,7 @@ info:
     mecanismo de autenticación y control de acceso (Actividad 24).
     Los permisos y validaciones coinciden con el rediseño de la Fase 2 y con la implementación en `src/`.
 servers:
-  - url: http://localhost:3000/api
+  - url: http://localhost:3005/api
 
 tags:
   - name: Autenticación
