@@ -9,60 +9,60 @@ module.exports = function rutasUsuarios(db) {
   const router = express.Router();
   const auth = autenticar(db);
 
-  const porCorreo = db.prepare('SELECT id FROM usuarios WHERE correo = ?');
-  const insertar = db.prepare(
-    `INSERT INTO usuarios (nombre, correo, telefono, password_hash, rol)
-     VALUES (?, ?, ?, ?, 'usuario')`
-  );
-  const porId = db.prepare('SELECT * FROM usuarios WHERE id = ?');
-  // Al cambiar el rol se invalidan las sesiones abiertas del usuario.
-  const actualizarRol = db.prepare(
-    'UPDATE usuarios SET rol = ?, token_version = token_version + 1 WHERE id = ?'
-  );
-  const listar = db.prepare('SELECT * FROM usuarios ORDER BY id');
-  const inscripcionesDe = db.prepare('SELECT * FROM inscripciones WHERE usuario_id = ? ORDER BY id');
+  const porId = (id) => db.get('SELECT * FROM usuarios WHERE id = ?', [id]);
 
   // API 2: registro público. El rol NO se acepta del cliente: siempre es "usuario".
   router.post('/', validar(schemas.registroUsuario), async (req, res) => {
     const { nombre, correo, password, telefono } = req.datos;
-    if (porCorreo.get(correo)) throw new HttpError(409, 'El correo ya está registrado');
+    if (await db.get('SELECT id FROM usuarios WHERE correo = ?', [correo])) {
+      throw new HttpError(409, 'El correo ya está registrado');
+    }
     const hash = await bcrypt.hash(password, 10);
-    const { lastInsertRowid } = insertar.run(nombre, correo, telefono ?? null, hash);
-    res.status(201).json(dto.usuarioPublico(porId.get(Number(lastInsertRowid))));
+    const usuario = await db.get(
+      `INSERT INTO usuarios (nombre, correo, telefono, password_hash, rol)
+       VALUES (?, ?, ?, ?, 'usuario') RETURNING *`,
+      [nombre, correo, telefono ?? null, hash]
+    );
+    res.status(201).json(dto.usuarioPublico(usuario));
   });
 
   // API 6: solo el propio usuario o un administrador. Respuesta filtrada por DTO.
-  router.get('/:id', auth, (req, res) => {
+  router.get('/:id', auth, async (req, res) => {
     const id = idParam(req.params.id);
     const esAdmin = req.usuario.rol === 'administrador';
     if (!esAdmin && req.usuario.id !== id) {
       throw new HttpError(403, 'No tiene permiso para consultar este usuario');
     }
-    const usuario = porId.get(id);
+    const usuario = await porId(id);
     if (!usuario) throw new HttpError(404, 'Usuario no encontrado');
     res.json(esAdmin ? dto.usuarioAdmin(usuario) : dto.usuarioPublico(usuario));
   });
 
   // Control 2 (Act. 24): inscripciones privadas de un usuario. Solo él mismo o un administrador.
-  router.get('/:id/inscripciones', auth, (req, res) => {
+  router.get('/:id/inscripciones', auth, async (req, res) => {
     const id = idParam(req.params.id);
     if (req.usuario.rol !== 'administrador' && req.usuario.id !== id) {
       throw new HttpError(403, 'Solo puede consultar sus propias inscripciones');
     }
-    if (!porId.get(id)) throw new HttpError(404, 'Usuario no encontrado');
-    res.json(inscripcionesDe.all(id).map(dto.inscripcion));
+    if (!(await porId(id))) throw new HttpError(404, 'Usuario no encontrado');
+    const filas = await db.all('SELECT * FROM inscripciones WHERE usuario_id = ? ORDER BY id', [id]);
+    res.json(filas.map(dto.inscripcion));
   });
 
   // Administración de usuarios: exclusiva del administrador.
-  router.get('/', auth, requiereRol('administrador'), (_req, res) => {
-    res.json(listar.all().map(dto.usuarioAdmin));
+  router.get('/', auth, requiereRol('administrador'), async (_req, res) => {
+    res.json((await db.all('SELECT * FROM usuarios ORDER BY id')).map(dto.usuarioAdmin));
   });
 
-  router.patch('/:id/rol', auth, requiereRol('administrador'), validar(schemas.cambiarRol), (req, res) => {
+  router.patch('/:id/rol', auth, requiereRol('administrador'), validar(schemas.cambiarRol), async (req, res) => {
     const id = idParam(req.params.id);
-    if (!porId.get(id)) throw new HttpError(404, 'Usuario no encontrado');
-    actualizarRol.run(req.datos.rol, id);
-    res.json(dto.usuarioAdmin(porId.get(id)));
+    // Al cambiar el rol se invalidan las sesiones abiertas del usuario.
+    const usuario = await db.get(
+      'UPDATE usuarios SET rol = ?, token_version = token_version + 1 WHERE id = ? RETURNING *',
+      [req.datos.rol, id]
+    );
+    if (!usuario) throw new HttpError(404, 'Usuario no encontrado');
+    res.json(dto.usuarioAdmin(usuario));
   });
 
   return router;

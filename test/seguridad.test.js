@@ -1,6 +1,9 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { crearApp } = require('../src/app');
+const { baseDeDatosDePrueba } = require('./util');
+
+let cerrarDb;
 const { SEED_PASSWORD } = require('../src/db');
 
 let server;
@@ -8,7 +11,8 @@ let base;
 let admin, olga, oscar, carlos, ana;
 
 before(async () => {
-  const { app } = crearApp({ dbPath: ':memory:', loginMaxIntentos: 5 });
+  const { app, db } = await crearApp({ ...baseDeDatosDePrueba(), loginMaxIntentos: 5 });
+  cerrarDb = () => db.cerrar();
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -17,7 +21,10 @@ before(async () => {
   );
 });
 
-after(() => server.close());
+after(async () => {
+  server.close();
+  await cerrarDb();
+});
 
 async function api(metodo, ruta, { token, body } = {}) {
   const res = await fetch(base + ruta, {

@@ -4,17 +4,34 @@ Backend de Eventia con autenticación JWT y control de acceso por rol, propiedad
 
 - Actividad 23 — auditoría OWASP API Security Top 10: [INFORME.md](INFORME.md)
 - Actividad 24 — autenticación y control de acceso: [INFORME-ACT24.md](INFORME-ACT24.md)
+- Actividad 27 — despliegue y Docker: [INFORME-ACT27.md](INFORME-ACT27.md)
 
 ## Ejecutar
+
+### Con Docker (app + PostgreSQL)
+
+```bash
+docker compose up -d --build   # http://localhost:3005
+docker compose ps              # ambos contenedores deben estar "healthy"
+docker compose down            # detiene; los datos quedan en el volumen eventia-pgdata
+docker compose down -v         # detiene y borra los datos
+```
+
+### Sin Docker (SQLite)
 
 ```bash
 npm install
 npm start          # frontend en http://localhost:3005 · API en http://localhost:3005/api
-npm test           # 46 pruebas (seguridad + autenticación)
+npm test           # 46 pruebas (seguridad + autenticación) sobre SQLite en memoria
+npm run test:pg    # las mismas pruebas sobre PostgreSQL (requiere TEST_DATABASE_URL)
 npm run token:vencido   # imprime un JWT vencido para probar en Postman
 ```
 
-La base `eventia.db` se crea con datos semilla. Usuarios de prueba (contraseña `Eventia2026!`):
+### Despliegue
+
+[render.yaml](render.yaml) describe el servicio web (construido con el `Dockerfile`) y la base PostgreSQL en Render: **New → Blueprint** → seleccionar este repositorio → escribir `SEED_PASSWORD` → **Apply**.
+
+Sin `DATABASE_URL`, la base `eventia.db` (SQLite) se crea con datos semilla. Usuarios de prueba (contraseña `Eventia2026!`, o el valor de `SEED_PASSWORD`):
 
 | Correo | Rol |
 |---|---|
@@ -24,7 +41,7 @@ La base `eventia.db` se crea con datos semilla. Usuarios de prueba (contraseña 
 | carlos@eventia.test | usuario |
 | ana@eventia.test | usuario |
 
-Variables de entorno: `PORT`, `DB_PATH`, `JWT_SECRET` (obligatorio cambiarlo fuera de desarrollo), `JWT_EXPIRES_IN` (por defecto `15m`).
+Variables de entorno: ver [.env.example](.env.example) (`PORT`, `DATABASE_URL`, `DB_PATH`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `SEED_PASSWORD`, `TRUST_PROXY`).
 
 ## Frontend
 
@@ -49,6 +66,7 @@ Los 401 incluyen `codigo`: `token_ausente`, `token_invalido`, `token_expirado` o
 ## Estructura
 
 - `public/` — frontend (index.html, styles.css, app.js)
+- `src/db.js` — capa de datos (PostgreSQL o SQLite)
 - `src/routes/` — endpoints (`auth`, `usuarios`, `eventos`, `inscripciones`)
 - `src/middleware/auth.js` — JWT y autorización por rol
 - `src/schemas.js` — validación estricta (zod)

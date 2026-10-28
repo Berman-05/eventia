@@ -3,6 +3,9 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 const { crearApp } = require('../src/app');
+const { baseDeDatosDePrueba } = require('./util');
+
+let cerrarDb;
 const { SEED_PASSWORD } = require('../src/db');
 const { firmarToken } = require('../src/middleware/auth');
 
@@ -30,7 +33,8 @@ async function login(correo) {
 }
 
 before(async () => {
-  const { app } = crearApp({ dbPath: ':memory:' });
+  const { app, db } = await crearApp({ ...baseDeDatosDePrueba() });
+  cerrarDb = () => db.cerrar();
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -42,7 +46,10 @@ before(async () => {
   assert.equal(r.status, 201);
 });
 
-after(() => server.close());
+after(async () => {
+  server.close();
+  await cerrarDb();
+});
 
 describe('Autenticación', () => {
   test('login devuelve token Bearer con expiración', async () => {

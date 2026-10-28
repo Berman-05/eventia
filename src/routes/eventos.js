@@ -8,34 +8,8 @@ module.exports = function rutasEventos(db) {
   const router = express.Router();
   const auth = autenticar(db);
 
-  const listar = db.prepare('SELECT * FROM eventos ORDER BY fecha');
-  const listarDe = db.prepare('SELECT * FROM eventos WHERE organizador_id = ? ORDER BY fecha');
-  const cerrar = db.prepare("UPDATE eventos SET estado = 'cerrado' WHERE id = ?");
-  const porId = db.prepare('SELECT * FROM eventos WHERE id = ?');
-  const insertar = db.prepare(
-    `INSERT INTO eventos (titulo, descripcion, fecha, cupo, disponibles, precio, organizador_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  );
-  const actualizar = db.prepare(
-    `UPDATE eventos SET titulo = ?, descripcion = ?, fecha = ?, cupo = ?, disponibles = ?, precio = ?
-     WHERE id = ?`
-  );
-  const yaInscrito = db.prepare('SELECT 1 FROM inscripciones WHERE evento_id = ? AND usuario_id = ?');
-  // Descuento atómico: solo se aplica si todavía hay cupos suficientes.
-  const descontarCupos = db.prepare(
-    'UPDATE eventos SET disponibles = disponibles - ? WHERE id = ? AND disponibles >= ?'
-  );
-  const insertarInscripcion = db.prepare(
-    'INSERT INTO inscripciones (evento_id, usuario_id, cantidad) VALUES (?, ?, ?)'
-  );
-  const inscripcionPorId = db.prepare('SELECT * FROM inscripciones WHERE id = ?');
-  const inscripcionesDeEvento = db.prepare(
-    `SELECT i.*, u.nombre, u.correo FROM inscripciones i
-     JOIN usuarios u ON u.id = i.usuario_id WHERE i.evento_id = ? ORDER BY i.id`
-  );
-
-  function obtenerEvento(id) {
-    const evento = porId.get(id);
+  async function obtenerEvento(id, conexion = db) {
+    const evento = await conexion.get('SELECT * FROM eventos WHERE id = ?', [id]);
     if (!evento) throw new HttpError(404, 'Evento no encontrado');
     return evento;
   }
@@ -53,29 +27,36 @@ module.exports = function rutasEventos(db) {
   }
 
   // Consulta pública.
-  router.get('/', (_req, res) => res.json(listar.all().map(dto.evento)));
+  router.get('/', async (_req, res) => {
+    res.json((await db.all('SELECT * FROM eventos ORDER BY fecha')).map(dto.evento));
+  });
 
   // Eventos del organizador autenticado: la lista se filtra por el token, no por un parámetro.
   // Debe declararse antes de '/:id'.
-  router.get('/mios', auth, requiereRol('organizador', 'administrador'), (req, res) => {
-    res.json(listarDe.all(req.usuario.id).map(dto.evento));
+  router.get('/mios', auth, requiereRol('organizador', 'administrador'), async (req, res) => {
+    const filas = await db.all('SELECT * FROM eventos WHERE organizador_id = ? ORDER BY fecha', [req.usuario.id]);
+    res.json(filas.map(dto.evento));
   });
 
-  router.get('/:id', (req, res) => res.json(dto.evento(obtenerEvento(idParam(req.params.id)))));
+  router.get('/:id', async (req, res) => {
+    res.json(dto.evento(await obtenerEvento(idParam(req.params.id))));
+  });
 
   // API 3: solo organizadores (o admin) y con datos validados.
-  router.post('/', auth, requiereRol('organizador', 'administrador'), validar(schemas.crearEvento), (req, res) => {
+  router.post('/', auth, requiereRol('organizador', 'administrador'), validar(schemas.crearEvento), async (req, res) => {
     const { titulo, descripcion, fecha, cupo, precio } = req.datos;
     // organizador_id se toma del token, nunca del cuerpo.
-    const { lastInsertRowid } = insertar.run(
-      titulo, descripcion ?? null, fecha, cupo, cupo, precio, req.usuario.id
+    const evento = await db.get(
+      `INSERT INTO eventos (titulo, descripcion, fecha, cupo, disponibles, precio, organizador_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      [titulo, descripcion ?? null, fecha, cupo, cupo, precio, req.usuario.id]
     );
-    res.status(201).json(dto.evento(porId.get(Number(lastInsertRowid))));
+    res.status(201).json(dto.evento(evento));
   });
 
   // API 4: además del rol, se comprueba que el evento le pertenezca.
-  router.put('/:id', auth, requiereRol('organizador', 'administrador'), validar(schemas.modificarEvento), (req, res) => {
-    const evento = obtenerEvento(idParam(req.params.id));
+  router.put('/:id', auth, requiereRol('organizador', 'administrador'), validar(schemas.modificarEvento), async (req, res) => {
+    const evento = await obtenerEvento(idParam(req.params.id));
     verificarPropietario(evento, req.usuario);
     verificarAbierto(evento, 'El evento está cerrado y no admite cambios');
 
@@ -84,51 +65,63 @@ module.exports = function rutasEventos(db) {
     if (nuevo.cupo < ocupados) {
       throw new HttpError(409, `El cupo no puede ser menor a los ${ocupados} lugares ya inscritos`);
     }
-    actualizar.run(
-      nuevo.titulo, nuevo.descripcion, nuevo.fecha, nuevo.cupo, nuevo.cupo - ocupados, nuevo.precio, evento.id
+    // El cupo libre se recalcula en SQL con los valores actuales, por si hubo inscripciones entretanto.
+    const actualizado = await db.get(
+      `UPDATE eventos SET titulo = ?, descripcion = ?, fecha = ?, precio = ?,
+         disponibles = ? - (cupo - disponibles), cupo = ?
+       WHERE id = ? AND ? >= cupo - disponibles RETURNING *`,
+      [nuevo.titulo, nuevo.descripcion, nuevo.fecha, nuevo.precio, nuevo.cupo, nuevo.cupo, evento.id, nuevo.cupo]
     );
-    res.json(dto.evento(porId.get(evento.id)));
+    if (!actualizado) throw new HttpError(409, 'El cupo no puede ser menor a los lugares ya inscritos');
+    res.json(dto.evento(actualizado));
   });
 
   // Cerrar un evento propio: a partir de ahí no admite cambios ni inscripciones.
-  router.post('/:id/cerrar', auth, requiereRol('organizador', 'administrador'), (req, res) => {
-    const evento = obtenerEvento(idParam(req.params.id));
+  router.post('/:id/cerrar', auth, requiereRol('organizador', 'administrador'), async (req, res) => {
+    const evento = await obtenerEvento(idParam(req.params.id));
     verificarPropietario(evento, req.usuario);
     verificarAbierto(evento, 'El evento ya está cerrado');
-    cerrar.run(evento.id);
-    res.json(dto.evento(porId.get(evento.id)));
+    const cerrado = await db.get("UPDATE eventos SET estado = 'cerrado' WHERE id = ? RETURNING *", [evento.id]);
+    res.json(dto.evento(cerrado));
   });
 
   // API 5: máximo por usuario + descuento de cupos atómico dentro de una transacción.
-  router.post('/:id/inscripciones', auth, requiereRol('usuario', 'organizador'), validar(schemas.inscripcion), (req, res) => {
-    const evento = obtenerEvento(idParam(req.params.id));
+  router.post('/:id/inscripciones', auth, requiereRol('usuario', 'organizador'), validar(schemas.inscripcion), async (req, res) => {
+    const evento = await obtenerEvento(idParam(req.params.id));
     if (evento.organizador_id === req.usuario.id) {
       throw new HttpError(403, 'No puede inscribirse en su propio evento');
     }
     verificarAbierto(evento, 'El evento no admite inscripciones');
     const { cantidad } = req.datos;
 
-    db.exec('BEGIN IMMEDIATE');
-    try {
-      if (yaInscrito.get(evento.id, req.usuario.id)) {
+    const inscripcion = await db.transaccion(async (tx) => {
+      if (await tx.get('SELECT 1 AS si FROM inscripciones WHERE evento_id = ? AND usuario_id = ?', [evento.id, req.usuario.id])) {
         throw new HttpError(409, 'Ya tiene una inscripción en este evento');
       }
-      const { changes } = descontarCupos.run(cantidad, evento.id, cantidad);
+      // Descuento atómico: solo se aplica si todavía hay cupos suficientes y el evento sigue abierto.
+      const { changes } = await tx.run(
+        "UPDATE eventos SET disponibles = disponibles - ? WHERE id = ? AND disponibles >= ? AND estado = 'abierto'",
+        [cantidad, evento.id, cantidad]
+      );
       if (changes === 0) throw new HttpError(409, 'No hay cupos suficientes');
-      const { lastInsertRowid } = insertarInscripcion.run(evento.id, req.usuario.id, cantidad);
-      db.exec('COMMIT');
-      res.status(201).json(dto.inscripcion(inscripcionPorId.get(Number(lastInsertRowid))));
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw err;
-    }
+      return tx.get(
+        'INSERT INTO inscripciones (evento_id, usuario_id, cantidad, creada_en) VALUES (?, ?, ?, ?) RETURNING *',
+        [evento.id, req.usuario.id, cantidad, new Date().toISOString()]
+      );
+    });
+    res.status(201).json(dto.inscripcion(inscripcion));
   });
 
   // Inscripciones de un evento: solo su organizador o un administrador.
-  router.get('/:id/inscripciones', auth, requiereRol('organizador', 'administrador'), (req, res) => {
-    const evento = obtenerEvento(idParam(req.params.id));
+  router.get('/:id/inscripciones', auth, requiereRol('organizador', 'administrador'), async (req, res) => {
+    const evento = await obtenerEvento(idParam(req.params.id));
     verificarPropietario(evento, req.usuario);
-    res.json(inscripcionesDeEvento.all(evento.id).map(dto.inscripcionOrganizador));
+    const filas = await db.all(
+      `SELECT i.*, u.nombre, u.correo FROM inscripciones i
+       JOIN usuarios u ON u.id = i.usuario_id WHERE i.evento_id = ? ORDER BY i.id`,
+      [evento.id]
+    );
+    res.json(filas.map(dto.inscripcionOrganizador));
   });
 
   return router;

@@ -13,9 +13,6 @@ const HASH_FICTICIO = bcrypt.hashSync('contraseña-que-nunca-coincide', 10);
 
 module.exports = function rutasAuth(db, opciones = {}) {
   const router = express.Router();
-  const buscar = db.prepare('SELECT * FROM usuarios WHERE correo = ?');
-  const revocar = db.prepare('INSERT OR IGNORE INTO tokens_revocados (jti, expira_en) VALUES (?, ?)');
-  const subirVersion = db.prepare('UPDATE usuarios SET token_version = token_version + 1 WHERE id = ?');
   const auth = autenticar(db);
 
   // API 7: máximo N intentos fallidos por IP + correo en la ventana de tiempo.
@@ -33,7 +30,7 @@ module.exports = function rutasAuth(db, opciones = {}) {
 
   router.post('/login', limitarLogin, validar(schemas.login), async (req, res) => {
     const { correo, password } = req.datos;
-    const usuario = buscar.get(correo);
+    const usuario = await db.get('SELECT * FROM usuarios WHERE correo = ?', [correo]);
     const ok = await bcrypt.compare(password, usuario ? usuario.password_hash : HASH_FICTICIO);
     if (!usuario || !ok) {
       // Mismo mensaje y mismo código para correo inexistente y contraseña incorrecta.
@@ -53,14 +50,17 @@ module.exports = function rutasAuth(db, opciones = {}) {
   router.get('/me', auth, (req, res) => res.json(dto.usuarioAdmin(req.usuario)));
 
   // Cierre de sesión: revoca este token (por su jti) hasta que habría expirado.
-  router.post('/logout', auth, (req, res) => {
-    revocar.run(req.token.jti, req.token.exp);
+  router.post('/logout', auth, async (req, res) => {
+    await db.run(
+      'INSERT INTO tokens_revocados (jti, expira_en) VALUES (?, ?) ON CONFLICT (jti) DO NOTHING',
+      [req.token.jti, req.token.exp]
+    );
     res.status(204).end();
   });
 
   // Cierra todas las sesiones del usuario (p. ej. tras cambiar contraseña o robo de dispositivo).
-  router.post('/logout-todas', auth, (req, res) => {
-    subirVersion.run(req.usuario.id);
+  router.post('/logout-todas', auth, async (req, res) => {
+    await db.run('UPDATE usuarios SET token_version = token_version + 1 WHERE id = ?', [req.usuario.id]);
     res.status(204).end();
   });
 

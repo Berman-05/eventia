@@ -22,10 +22,7 @@ function firmarToken(usuario, opciones = {}) {
 // revocado y que la versión coincida. El rol se toma de la BD, no del token, para que un
 // cambio de rol o una cuenta eliminada surtan efecto de inmediato.
 function autenticar(db) {
-  const buscar = db.prepare('SELECT id, nombre, correo, rol, token_version FROM usuarios WHERE id = ?');
-  const revocado = db.prepare('SELECT 1 FROM tokens_revocados WHERE jti = ?');
-
-  return (req, _res, next) => {
+  return async (req, _res, next) => {
     const header = req.get('authorization') || '';
     const [tipo, token] = header.split(' ');
     if (tipo !== 'Bearer' || !token) {
@@ -40,10 +37,12 @@ function autenticar(db) {
       }
       return next(new HttpError(401, 'Token inválido', undefined, 'token_invalido'));
     }
-    if (revocado.get(payload.jti)) {
+    if (await db.get('SELECT 1 AS si FROM tokens_revocados WHERE jti = ?', [payload.jti])) {
       return next(new HttpError(401, 'La sesión fue cerrada. Inicie sesión nuevamente', undefined, 'token_revocado'));
     }
-    const usuario = buscar.get(Number(payload.sub));
+    const usuario = await db.get(
+      'SELECT id, nombre, correo, rol, token_version FROM usuarios WHERE id = ?', [Number(payload.sub)]
+    );
     if (!usuario || usuario.token_version !== payload.ver) {
       return next(new HttpError(401, 'Token inválido', undefined, 'token_invalido'));
     }

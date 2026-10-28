@@ -47,6 +47,10 @@ function manejadorErrores(err, _req, res, _next) {
   if (err.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Solicitud demasiado grande' });
   }
+  // Violación de UNIQUE (dos solicitudes simultáneas que crean el mismo registro).
+  if (err.code === '23505' || /UNIQUE constraint failed/.test(err.message)) {
+    return res.status(409).json({ error: 'El registro ya existe' });
+  }
   console.error(err);
   // No se exponen trazas ni mensajes internos al cliente.
   res.status(500).json({ error: 'Error interno del servidor' });

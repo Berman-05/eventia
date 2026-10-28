@@ -1,13 +1,21 @@
 const path = require('node:path');
 const express = require('express');
-const { openDb } = require('./db');
+const { abrirDb } = require('./db');
 const { manejadorErrores, HttpError } = require('./errors');
 
-function crearApp({ dbPath, ...opciones } = {}) {
-  const db = openDb(dbPath);
+/**
+ * Crea la aplicación Express conectada a la base de datos.
+ * @param {object} opciones databaseUrl / dbPath / reiniciar (ver abrirDb), trustProxy y
+ *   los parámetros del limitador de login.
+ */
+async function crearApp({ databaseUrl, dbPath, reiniciar, trustProxy, ...opciones } = {}) {
+  const db = await abrirDb({ databaseUrl, dbPath, reiniciar });
   const app = express();
 
   app.disable('x-powered-by');
+  // Detrás del proxy de la plataforma (Render) la IP real llega en X-Forwarded-For;
+  // sin esto el límite de intentos de login trataría a todos los clientes como uno solo.
+  if (trustProxy) app.set('trust proxy', trustProxy);
   app.use(express.json({ limit: '10kb' }));
 
   // Frontend (HTML/CSS/JS estático). Toda la seguridad sigue estando en la API.
@@ -42,6 +50,16 @@ function crearApp({ dbPath, ...opciones } = {}) {
       },
     });
   app.get('/api', indice);
+
+  // Estado del servicio: lo usan la plataforma de despliegue y el HEALTHCHECK de Docker.
+  app.get('/api/salud', async (_req, res) => {
+    try {
+      await db.get('SELECT 1 AS ok');
+      res.json({ estado: 'ok', baseDeDatos: db.dialecto });
+    } catch {
+      res.status(503).json({ estado: 'sin conexión a la base de datos' });
+    }
+  });
 
   app.use('/api/auth', require('./routes/auth')(db, opciones));
   app.use('/api/usuarios', require('./routes/usuarios')(db));

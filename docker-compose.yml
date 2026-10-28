@@ -1,0 +1,41 @@
+# Eventia completo en Docker: aplicación + PostgreSQL con volumen persistente.
+#   docker compose up -d --build
+#   http://localhost:3005
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: eventia-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eventia
+      POSTGRES_USER: eventia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eventia_local}
+    volumes:
+      # Los datos viven en el volumen, no en el contenedor: sobreviven a "docker compose down".
+      - eventia-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"   # 5433 en el equipo para no chocar con un PostgreSQL local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventia -d eventia"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    image: eventia-app
+    container_name: eventia-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://eventia:${POSTGRES_PASSWORD:-eventia_local}@db:5432/eventia
+      JWT_SECRET: ${JWT_SECRET:-secreto-local-de-docker-cambiar}
+      SEED_PASSWORD: ${SEED_PASSWORD:-Eventia2026!}
+      PORT: 3005
+    ports:
+      - "3005:3005"
+
+volumes:
+  eventia-pgdata:

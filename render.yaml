@@ -1,0 +1,31 @@
+# Blueprint de Render: crea la base de datos PostgreSQL y el servicio web de Eventia.
+# En Render: New > Blueprint > seleccionar este repositorio.
+databases:
+  - name: eventia-db
+    databaseName: eventia
+    user: eventia
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: eventia
+    runtime: docker            # se construye con el Dockerfile del repositorio
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /api/salud
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: eventia-db
+          property: connectionString   # URL interna: la base no se expone a Internet
+      - key: JWT_SECRET
+        generateValue: true            # Render genera un secreto aleatorio
+      - key: SEED_PASSWORD
+        sync: false                    # se escribe en el panel al crear el Blueprint
+      - key: TRUST_PROXY
+        value: "1"
+      - key: NODE_ENV
+        value: production

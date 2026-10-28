@@ -7,21 +7,20 @@ module.exports = function rutasInscripciones(db) {
   const router = express.Router();
   const auth = autenticar(db);
 
-  const mias = db.prepare('SELECT * FROM inscripciones WHERE usuario_id = ? ORDER BY id');
-  const porId = db.prepare(
-    `SELECT i.*, u.nombre, u.correo, e.organizador_id FROM inscripciones i
-     JOIN usuarios u ON u.id = i.usuario_id
-     JOIN eventos e ON e.id = i.evento_id
-     WHERE i.id = ?`
-  );
-
-  router.get('/mias', auth, (req, res) => {
-    res.json(mias.all(req.usuario.id).map(dto.inscripcion));
+  router.get('/mias', auth, async (req, res) => {
+    const filas = await db.all('SELECT * FROM inscripciones WHERE usuario_id = ? ORDER BY id', [req.usuario.id]);
+    res.json(filas.map(dto.inscripcion));
   });
 
   // API 1: se verifica que la inscripción pertenezca al solicitante (BOLA).
-  router.get('/:id', auth, (req, res) => {
-    const insc = porId.get(idParam(req.params.id));
+  router.get('/:id', auth, async (req, res) => {
+    const insc = await db.get(
+      `SELECT i.*, u.nombre, u.correo, e.organizador_id FROM inscripciones i
+       JOIN usuarios u ON u.id = i.usuario_id
+       JOIN eventos e ON e.id = i.evento_id
+       WHERE i.id = ?`,
+      [idParam(req.params.id)]
+    );
     const u = req.usuario;
     const esDueno = insc && insc.usuario_id === u.id;
     const esOrganizadorDelEvento = insc && insc.organizador_id === u.id;

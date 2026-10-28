@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+*.db
+*.db-journal
+test
+docs
+evidencias
+scripts
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore
