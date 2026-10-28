@@ -1,10 +1,6 @@
-# Eventia API (versión segura)
+# Eventia
 
-Backend de Eventia con autenticación JWT y control de acceso por rol, propiedad y estado del recurso.
-
-- Actividad 23 — auditoría OWASP API Security Top 10: [INFORME.md](INFORME.md)
-- Actividad 24 — autenticación y control de acceso: [INFORME-ACT24.md](INFORME-ACT24.md)
-- Actividad 27 — despliegue y Docker: [INFORME-ACT27.md](INFORME-ACT27.md)
+Plataforma web para descubrir eventos, reservar lugares y administrarlos. Backend Express con autenticación JWT y control de acceso por rol, propiedad y estado del recurso; PostgreSQL o SQLite; frontend sin dependencias.
 
 ## Ejecutar
 

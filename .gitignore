@@ -2,3 +2,6 @@ node_modules/
 *.db
 *.db-journal
 .env
+
+# Informes de las actividades (se entregan aparte)
+INFORME*.md
